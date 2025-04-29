@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync"
 	"testing"
 	"time"
 )
@@ -44,20 +43,18 @@ func TestConsume(t *testing.T) {
 
 	topic.produce(msg, partition)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
+	done := make(chan struct{})
 	go func() {
-		defer wg.Done()
-		topic.consume(partition)
+		topic.consume(partition, done)
 	}()
 
 	// Даём время консьюмеру обработать сообщение
 	time.Sleep(2 * time.Second)
 
+	// Завершаем работу консьюмера
+	close(done)
+
 	if len(topic.partitions[partition]) != 0 {
 		t.Errorf("Expected 0 messages in partition %d, but got %d", partition, len(topic.partitions[partition]))
 	}
-
-	wg.Wait()
 }

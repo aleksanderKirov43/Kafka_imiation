@@ -30,16 +30,21 @@ func (t *Topic) produce(msg string, partition int) {
 }
 
 // Функция консьюмера: читаем сообщения из партиций
-func (t *Topic) consume(partition int) {
+func (t *Topic) consume(partition int, done chan struct{}) {
 	for {
-		t.mu.Lock()
-		if len(t.partitions[partition]) > 0 {
-			msg := t.partitions[partition][0]
-			t.partitions[partition] = t.partitions[partition][1:] // Удаляем прочитанное сообщение
-			fmt.Printf("Консьюмер обработал из партиции %d: %s\n", partition, msg)
+		select {
+		case <-done:
+			return
+		default:
+			t.mu.Lock()
+			if len(t.partitions[partition]) > 0 {
+				msg := t.partitions[partition][0]
+				t.partitions[partition] = t.partitions[partition][1:] // Удаляем прочитанное сообщение
+				fmt.Printf("Консьюмер обработал из партиции %d: %s\n", partition, msg)
+			}
+			t.mu.Unlock()
+			time.Sleep(1 * time.Second)
 		}
-		t.mu.Unlock()
-		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -48,8 +53,11 @@ func main() {
 	topic := NewTopic(3)
 
 	// Запускаем консьюмеров для каждой партиции
+	done := make(chan struct{})
 	for i := 0; i < 3; i++ {
-		go topic.consume(i)
+		go func(i int) {
+			topic.consume(i, done)
+		}(i)
 	}
 
 	// Отправляем сообщения в разные партиции
@@ -57,4 +65,10 @@ func main() {
 		topic.produce(fmt.Sprintf("Заказ %d", i), i%3) // Разделяем по 3 партициям
 		time.Sleep(500 * time.Millisecond)
 	}
+
+	// Даём время консьюмерам обработать сообщения
+	time.Sleep(5 * time.Second)
+
+	// Завершаем работу консьюмеров
+	close(done)
 }
